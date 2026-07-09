@@ -59,8 +59,8 @@
 
 以下文件超过 GitHub 的 100 MB 单文件上限，使用 [Git LFS](https://git-lfs.github.com) 存储：
 
-- `大二下/AI/AI教材.pdf`
-- `大二下/数据库/数据库教材.pdf`
+- `大二下/AI/doc/textbook/AI教材.pdf`
+- `大二下/数据库/doc/textbook/数据库教材.pdf`
 - `大三上/系统结构/PPT/计算机系统结构教程.pdf`
 - `大三下/编译原理/笔记.pdf`
 
