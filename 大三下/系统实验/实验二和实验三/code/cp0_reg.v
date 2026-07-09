@@ -1,0 +1,276 @@
+//////////////////////////////////////////////////////////////////////
+// Module:  cp0_reg
+// File:    cp0_reg.v
+// Description: CP0 协处理器寄存器 — MIPS 特权架构核心
+//             包含以下 CP0 寄存器:
+//               - Count   (addr 9):  自增计数器，每个时钟周期 +1
+//               - Compare (addr 11): 定时器比较值，Count==Compare 时触发中断
+//               - Status  (addr 12): 处理器状态 (中断使能、运行模式等)
+//               - Cause   (addr 13): 异常原因码 (IP[15:10] 中断源, ExcCode[6:2])
+//               - EPC     (addr 14): 异常返回地址
+//               - PrId    (addr 15): 处理器 ID (只读)
+//               - Config  (addr 16): 配置寄存器 (只读)
+//             支持异常处理: 硬件中断、syscall、无效指令、trap、溢出、ERET
+//             输出 timer_int_o 定时器中断信号
+//////////////////////////////////////////////////////////////////////
+
+`include "defines.v"
+
+module cp0_reg(
+
+	// 系统时钟
+	input	wire										clk,
+	// 全局复位信号, 高电平有效
+	input wire										rst,
+
+	// ===== CP0 寄存器读写接口 =====
+	// CP0 写使能(MTC0 指令)
+	input wire                    we_i,
+	// CP0 写地址(5bit, 对应 CP0 寄存器编号 0~31)
+	input wire[4:0]               waddr_i,
+	// CP0 读地址(5bit, MFC0 指令使用)
+	input wire[4:0]               raddr_i,
+	// 写入 CP0 的数据(MTC0 的 rt 寄存器值)
+	input wire[`RegBus]           data_i,
+
+	// ===== 异常输入信号(来自 MEM 阶段) =====
+	// 异常类型编码(32bit):
+	//   32'h00000001: 外部硬件中断
+	//   32'h00000008: 系统调用(syscall)
+	//   32'h0000000a: 无效指令(inst_invalid)
+	//   32'h0000000c: 溢出(ov)
+	//   32'h0000000d: 自陷(trap)
+	//   32'h0000000e: 异常返回(ERET)
+	input wire[31:0]              excepttype_i,
+	// 硬件中断源输入(6bit, 对应 6 个硬件中断)
+	// int_i[5:0] 映射到 Cause 寄存器的 IP[15:10]
+	input wire[5:0]               int_i,
+	// 当前指令的 PC 地址(异常时保存到 EPC)
+	input wire[`RegBus]           current_inst_addr_i,
+	// 当前指令是否在延迟槽中(影响 EPC 保存和 Cause.BD)
+	input wire                    is_in_delayslot_i,
+
+	// ===== CP0 寄存器输出 =====
+	// 读数据输出(MFC0 指令读取的值)
+	output reg[`RegBus]           data_o,
+	// Count 寄存器 (CP0 地址 9): 自增计数器
+	output reg[`RegBus]           count_o,
+	// Compare 寄存器 (CP0 地址 11): 定时器比较值
+	output reg[`RegBus]           compare_o,
+	// Status 寄存器 (CP0 地址 12): 处理器状态与控制
+	output reg[`RegBus]           status_o,
+	// Cause 寄存器 (CP0 地址 13): 异常原因
+	output reg[`RegBus]           cause_o,
+	// EPC 寄存器 (CP0 地址 14): 异常返回地址
+	output reg[`RegBus]           epc_o,
+	// Config 寄存器 (CP0 地址 16): 处理器配置(只读)
+	output reg[`RegBus]           config_o,
+	// PrId 寄存器 (CP0 地址 15): 处理器 ID/版本号(只读)
+	output reg[`RegBus]           prid_o,
+
+	// 定时器中断信号(Count==Compare 时拉高)
+	output reg                   timer_int_o
+
+);
+
+	// ===================================================================
+	// always 块 @ posedge clk: CP0 寄存器主更新逻辑(时序逻辑)
+	// 功能: 在每个时钟上升沿执行以下操作:
+	//   1. Count 寄存器自增 (自由运行计数器, 每个时钟周期 +1)
+	//   2. 更新 Cause.IP[15:10] (硬件中断挂起标志)
+	//   3. 定时器中断检测 (Count==Compare 且 Compare!=0)
+	//   4. 处理 CP0 寄存器写操作 (MTC0 指令写入)
+	//   5. 异常处理 (保存 EPC, 更新 Status.EXL, 设置 Cause.ExcCode/BD)
+	// ===================================================================
+	always @ (posedge clk) begin
+		if(rst == `RstEnable) begin
+			// ===== 复位初始值 =====
+			count_o <= `ZeroWord;                     // Count = 0
+			compare_o <= `ZeroWord;                   // Compare = 0 (定时器中断禁用)
+
+			// Status 寄存器复位值:
+			//   32'b0001_0000_0000_0000_0000_0000_0000_0000
+			//   仅 bit[28]=1 (上电默认值), 其余为 0
+			status_o <= 32'b00010000000000000000000000000000;
+			cause_o <= `ZeroWord;                     // Cause = 0 (无异常挂起)
+			epc_o <= `ZeroWord;                       // EPC = 0
+
+			// Config 寄存器复位值: bit[15]=1 (BE: Big-Endian 模式), 其余为 0
+			config_o <= 32'b00000000000000001000000000000000;
+			// PrId 寄存器复位值: 处理器 ID 和版本号, 标识为 OpenMIPS 处理器
+			prid_o <= 32'b00000000010011000000000100000010;
+			// 定时器中断信号初始为未触发
+      timer_int_o <= `InterruptNotAssert;
+		end else begin
+		  count_o <= count_o + 1 ;
+		  cause_o[15:10] <= int_i;
+		
+			// ===== 定时器中断检测 =====
+			// 当 Compare 寄存器非零且 Count==Compare 时触发定时器中断
+			// 这是 MIPS 架构的硬件定时器中断机制
+			if(compare_o != `ZeroWord && count_o == compare_o) begin
+				timer_int_o <= `InterruptAssert;
+			end
+					
+			// ===== CP0 寄存器写操作 (MTC0 指令) =====
+			// 根据 waddr_i (写地址) 选择目标 CP0 寄存器写入 data_i
+			if(we_i == `WriteEnable) begin
+				case (waddr_i) 
+					`CP0_REG_COUNT:		begin  // CP0 地址 9: Count 寄存器写入
+						count_o <= data_i;  // 直接写入 Count 计数器值
+					end
+					`CP0_REG_COMPARE:	begin  // CP0 地址 11: Compare 寄存器写入
+						compare_o <= data_i;  // 写入 Compare 比较值, 同时清除定时器中断
+						//count_o <= `ZeroWord;
+            timer_int_o <= `InterruptNotAssert;
+					end
+					`CP0_REG_STATUS:	begin  // CP0 地址 12: Status 寄存器写入
+						status_o <= data_i;  // 写入 Status 控制寄存器
+					end
+					`CP0_REG_EPC:	begin  // CP0 地址 14: EPC 寄存器写入
+						epc_o <= data_i;  // 写入异常返回地址 EPC
+					end
+					`CP0_REG_CAUSE:	begin  // CP0 地址 13: Cause 寄存器写入
+
+						cause_o[9:8] <= data_i[9:8];  // 软件中断位 IP[1:0] (可写)
+						cause_o[23] <= data_i[23];  // IV 中断向量位 (可写)
+						cause_o[22] <= data_i[22];  // WP 观测挂起位 (可写)
+					end					
+				endcase  //case addr_i
+			end
+
+			// ===================================================================
+			// 异常处理: 根据异常类型编码(excepttype_i)执行对应的异常响应
+			//
+			// 所有异常(除 ERET)执行以下通用操作:
+			//   1. 保存返回地址到 EPC:
+			//      - 如果异常指令在延迟槽中(is_in_delayslot_i==1):
+			//        EPC = current_inst_addr - 4 (指向跳转指令)
+			//        Cause[31] (BD) = 1 (标记延迟槽)
+			//      - 否则: EPC = current_inst_addr
+			//        Cause[31] (BD) = 0
+			//   2. 设置 Status[1] (EXL) = 1: 进入内核态, 禁止再入异常
+			//   3. 设置 Cause[6:2] (ExcCode): 记录具体异常原因码
+			//
+			// ERET 异常返回指令特殊处理: 仅清除 Status[1] (EXL) = 0
+			// ===================================================================
+			case (excepttype_i)
+				32'h00000001:		begin	// 外部硬件中断 (interrupt)
+					if(is_in_delayslot_i == `InDelaySlot ) begin
+							// 异常指令在延迟槽中: EPC指向跳转指令(PC-4), BD=1
+						epc_o <= current_inst_addr_i - 4 ;  // 延迟槽: EPC = PC - 4 (指向跳转指令)
+						cause_o[31] <= 1'b1;  // BD = 1 (Branch Delay: 异常指令在延迟槽中)
+					end else begin
+					  epc_o <= current_inst_addr_i;
+					  cause_o[31] <= 1'b0;  // BD = 0 (异常指令不在延迟槽中)
+					end
+					status_o[1] <= 1'b1;  // EXL = 1 (进入异常处理, 禁止再入)
+					cause_o[6:2] <= 5'b00000;  // ExcCode = 0 (中断 Int)
+					
+				end
+				32'h00000008:		begin	// 系统调用异常 (syscall)
+					if(status_o[1] == 1'b0) begin  // 仅当不在异常处理中(EXL=0)时才更新 EPC
+						if(is_in_delayslot_i == `InDelaySlot ) begin
+							// 异常指令在延迟槽中: EPC指向跳转指令(PC-4), BD=1
+							epc_o <= current_inst_addr_i - 4 ;  // 延迟槽: EPC = PC - 4 (指向跳转指令)
+							cause_o[31] <= 1'b1;  // BD = 1 (Branch Delay: 异常指令在延迟槽中)
+						end else begin
+					  	epc_o <= current_inst_addr_i;
+					  	cause_o[31] <= 1'b0;  // BD = 0 (异常指令不在延迟槽中)
+						end
+					end
+					status_o[1] <= 1'b1;  // EXL = 1 (进入异常处理, 禁止再入)
+					cause_o[6:2] <= 5'b01000;			
+				end
+				32'h0000000a:		begin	// 无效指令异常 (RI: Reserved Instruction)
+					if(status_o[1] == 1'b0) begin  // 仅当不在异常处理中(EXL=0)时才更新 EPC
+						if(is_in_delayslot_i == `InDelaySlot ) begin
+							// 异常指令在延迟槽中: EPC指向跳转指令(PC-4), BD=1
+							epc_o <= current_inst_addr_i - 4 ;  // 延迟槽: EPC = PC - 4 (指向跳转指令)
+							cause_o[31] <= 1'b1;  // BD = 1 (Branch Delay: 异常指令在延迟槽中)
+						end else begin
+					  	epc_o <= current_inst_addr_i;
+					  	cause_o[31] <= 1'b0;  // BD = 0 (异常指令不在延迟槽中)
+						end
+					end
+					status_o[1] <= 1'b1;  // EXL = 1 (进入异常处理, 禁止再入)
+					cause_o[6:2] <= 5'b01010;					
+				end
+				32'h0000000d:		begin	// 自陷异常 (trap)
+					if(status_o[1] == 1'b0) begin  // 仅当不在异常处理中(EXL=0)时才更新 EPC
+						if(is_in_delayslot_i == `InDelaySlot ) begin
+							// 异常指令在延迟槽中: EPC指向跳转指令(PC-4), BD=1
+							epc_o <= current_inst_addr_i - 4 ;  // 延迟槽: EPC = PC - 4 (指向跳转指令)
+							cause_o[31] <= 1'b1;  // BD = 1 (Branch Delay: 异常指令在延迟槽中)
+						end else begin
+					  	epc_o <= current_inst_addr_i;
+					  	cause_o[31] <= 1'b0;  // BD = 0 (异常指令不在延迟槽中)
+						end
+					end
+					status_o[1] <= 1'b1;  // EXL = 1 (进入异常处理, 禁止再入)
+					cause_o[6:2] <= 5'b01101;					
+				end
+				32'h0000000c:		begin	// 溢出异常 (ov: Overflow)
+					if(status_o[1] == 1'b0) begin  // 仅当不在异常处理中(EXL=0)时才更新 EPC
+						if(is_in_delayslot_i == `InDelaySlot ) begin
+							// 异常指令在延迟槽中: EPC指向跳转指令(PC-4), BD=1
+							epc_o <= current_inst_addr_i - 4 ;  // 延迟槽: EPC = PC - 4 (指向跳转指令)
+							cause_o[31] <= 1'b1;  // BD = 1 (Branch Delay: 异常指令在延迟槽中)
+						end else begin
+					  	epc_o <= current_inst_addr_i;
+					  	cause_o[31] <= 1'b0;  // BD = 0 (异常指令不在延迟槽中)
+						end
+					end
+					status_o[1] <= 1'b1;  // EXL = 1 (进入异常处理, 禁止再入)
+					cause_o[6:2] <= 5'b01100;					
+				end				
+				32'h0000000e:   begin	// 异常返回指令 (ERET)
+					status_o[1] <= 1'b0;  // EXL = 0 (退出异常处理, 返回用户态)
+				end
+				default:				begin
+				end
+			endcase			
+			
+		end    //if
+	end      //always
+			
+		// ===================================================================
+		// always 块 @ (*): CP0 寄存器读操作 (组合逻辑)
+		// 功能: 根据 raddr_i (读地址) 选择对应的 CP0 寄存器值输出到 data_o
+		//       MFC0 指令通过此通道读取 CP0 寄存器值
+		//       支持的 CP0 寄存器: Count(9), Compare(11), Status(12),
+		//                         Cause(13), EPC(14), PrId(15), Config(16)
+		// ===================================================================
+	always @ (*) begin
+		if(rst == `RstEnable) begin
+			data_o <= `ZeroWord;
+		end else begin
+				case (raddr_i) 
+					`CP0_REG_COUNT:		begin  // CP0 地址 9: Count 寄存器读取
+						data_o <= count_o ;
+					end
+					`CP0_REG_COMPARE:	begin  // CP0 地址 11: Compare 寄存器读取
+						data_o <= compare_o ;
+					end
+					`CP0_REG_STATUS:	begin  // CP0 地址 12: Status 寄存器读取
+						data_o <= status_o ;
+					end
+					`CP0_REG_CAUSE:	begin  // CP0 地址 13: Cause 寄存器读取
+						data_o <= cause_o ;
+					end
+					`CP0_REG_EPC:	begin  // CP0 地址 14: EPC 寄存器读取
+						data_o <= epc_o ;
+					end
+					`CP0_REG_PrId:	begin  // CP0 地址 15: PrId 寄存器读取(只读)
+						data_o <= prid_o ;
+					end
+					`CP0_REG_CONFIG:	begin  // CP0 地址 16: Config 寄存器读取(只读)
+						data_o <= config_o ;
+					end	
+					default: 	begin
+					end			
+				endcase  //case addr_i			
+		end    //if
+	end      //always
+
+endmodule
