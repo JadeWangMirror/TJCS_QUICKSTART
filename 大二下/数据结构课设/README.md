@@ -17,7 +17,9 @@ TODO
 
 项目源代码不直接放入本仓库，应以外部仓库链接形式维护。
 
-- 项目源码链接：TODO
+- 项目源码参考链接：
+- <https://github.com/hyxtj/ShanghaiMetroDisplay>
+- <https://github.com/hyxtj/BST-Display>
 
 ## 实验与作业
 

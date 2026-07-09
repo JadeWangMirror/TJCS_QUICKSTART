@@ -35,8 +35,8 @@ TODO
 大作业参考项目为小组 Web 项目：
 
 - <https://github.com/fluckyflucky/Introduction-to-Computer-Science>
+- <https://github.com/hyxtj/weboj>
 
-该仓库是计算机科学导论大作业的小组 Web 项目，可作为课程项目实现的参考样例。
 
 仅供学习参考，请遵守课程的学术诚信要求。
 
