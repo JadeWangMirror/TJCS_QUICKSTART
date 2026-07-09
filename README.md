@@ -23,20 +23,20 @@
 │   ├── 数据结构课设/    课设计划 + 解包资料
 │   └── 拓扑/            教材
 ├── 大三上/
-│   ├── 操作系统/        PPT + 期末
-│   ├── 数据库课设/      设计报告 + 前后端项目 + 数据 ↗ 外部仓库
-│   ├── 机器学习/        课件 + 作业（分类 / 回归 / 聚类）
-│   ├── 系统结构/        PPT + 教材
-│   ├── 计算机网络/      PPT + 实验
-│   ├── 软件工程/        PPT + 技术文档 + 汇报
-│   ├── 随机过程/        code + data
-│   └── 自动机/          形式语言与自动机 ↗ 外部仓库
+│   ├── 操作系统/        README + doc/ppt + doc/exam
+│   ├── 数据库课设/      README + doc/project + data + video ↗ 外部仓库
+│   ├── 机器学习/        README + doc/ppt + doc/assignment + doc/exam
+│   ├── 系统结构/        README + doc/textbook + doc/ppt + doc/notes
+│   ├── 计算机网络/      README + doc/ppt + doc/lab
+│   ├── 软件工程/        README + doc/ppt + doc/project + doc/presentation
+│   ├── 随机过程/        README + data + image + doc/project
+│   └── 自动机/          README ↗ 外部仓库
 └── 大三下/
-    ├── 编译原理/        PPT + 笔记
-    ├── 中文信息处理/    分词系统对比实验 ↗ 外部仓库
-    ├── 操作系统课设/    滚动条 + 离散化 + 虚拟存储器
-    ├── 系统实验/        实验二 & 实验三
-    └── 计网课设/
+    ├── 编译原理/        README + doc/ppt + doc/notes
+    ├── 中文信息处理/    README ↗ 外部仓库
+    ├── 操作系统课设/    README + doc/project ↗ 外部链接待补
+    ├── 系统实验/        README + doc/lab + doc/presentation ↗ 外部链接待补
+    └── 计网课设/        README ↗ 外部链接待补
 ```
 
 ---
@@ -61,8 +61,8 @@
 
 - `大二下/AI/doc/textbook/AI教材.pdf`
 - `大二下/数据库/doc/textbook/数据库教材.pdf`
-- `大三上/系统结构/PPT/计算机系统结构教程.pdf`
-- `大三下/编译原理/笔记.pdf`
+- `大三上/系统结构/doc/textbook/计算机系统结构教程.pdf`
+- `大三下/编译原理/doc/notes/笔记.pdf`
 
 克隆前请先安装并初始化 LFS：
 

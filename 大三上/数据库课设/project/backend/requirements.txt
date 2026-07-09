@@ -1,7 +1,0 @@
-Flask
-flask-cors
-pandas
-sentence-transformers
-torch
-Werkzeug
-PyJWT
