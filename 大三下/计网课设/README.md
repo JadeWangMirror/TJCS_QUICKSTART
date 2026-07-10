@@ -16,7 +16,7 @@ TODO
 
 课程设计项目文件不直接放入本仓库，应以外部仓库链接形式维护。
 
-- 项目链接：TODO
+- 项目链接：<https://github.com/hyxtj/Tongji-cs-computer-network-design>
 
 ## 实验与作业
 

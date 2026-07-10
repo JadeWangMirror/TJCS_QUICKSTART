@@ -15,15 +15,17 @@ TODO
 
 ## 课程项目参考
 
-TODO
+- <https://github.com/Ainski/CompilePrincipleHw>
 
 ## 实验与作业
 
-TODO
+需要小组
 
 ## 期末考试与复习
 
 - `doc/notes/笔记.pdf`
+  
+复习时对照往年题即可，按照往年题到ppt上找对应知识点学习
 
 ## 备注
 
