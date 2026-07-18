@@ -1,1 +1,28 @@
+# 待整理的旧内容（打包区，各课程 todo/ 目录）
 **/todo/
+
+# 系统文件
+.DS_Store
+Thumbs.db
+desktop.ini
+ehthumbs.db
+$RECYCLE.BIN/
+
+# 编辑器 / IDE
+.vscode/
+.idea/
+*.swp
+*.swo
+*~
+
+# 临时文件
+*.tmp
+*.bak
+*.log
+
+# Office 锁文件（~$xxx.docx 等）
+~$*
+
+# macOS
+__MACOSX/
+._*
